@@ -7,21 +7,36 @@ export interface Expense {
   category: string;
   purpose: string;
   wallet: WalletType;
+  walletId?: string; // ID of specific bank or credit card
   date: Date;
   attachments: string[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface Wallet {
+export interface BankAccount {
+  id: string;
+  name: string;
+  balance: number;
+  lastUpdated: Date;
+}
+
+export interface CreditCard {
+  id: string;
+  name: string;
+  dueAmount: number;
+  lastUpdated: Date;
+}
+
+export interface CashWallet {
   balance: number;
   lastUpdated: Date;
 }
 
 export interface Wallets {
-  bank: Wallet;
-  creditCard: Wallet;
-  cash: Wallet;
+  banks: BankAccount[];
+  creditCards: CreditCard[];
+  cash: CashWallet;
 }
 
 export interface Note {
@@ -58,9 +73,9 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 
 export const CURRENCIES = [
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
   { code: 'USD', symbol: '$', name: 'US Dollar' },
   { code: 'EUR', symbol: '€', name: 'Euro' },
   { code: 'GBP', symbol: '£', name: 'British Pound' },
-  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
   { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
 ] as const;

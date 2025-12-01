@@ -1,6 +1,7 @@
 import { format } from 'date-fns';
 import { Trash2, Edit, Paperclip } from 'lucide-react';
 import { Expense, WalletType } from '@/types/expense';
+import { formatINR } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { getCloudinaryThumbnail } from '@/lib/cloudinary';
@@ -20,7 +21,7 @@ const walletIcons: Record<WalletType, string> = {
 
 export function ExpenseItem({ expense, onEdit, onDelete }: ExpenseItemProps) {
   return (
-    <Card className="shadow-card hover:shadow-lg transition-smooth">
+    <Card className="shadow-card hover:shadow-lg transition-smooth hover-lift">
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -31,7 +32,7 @@ export function ExpenseItem({ expense, onEdit, onDelete }: ExpenseItemProps) {
               </span>
             </div>
             <p className="font-semibold text-lg mb-1">
-              ${expense.amount.toFixed(2)}
+              {formatINR(expense.amount)}
             </p>
             <p className="text-sm text-muted-foreground mb-1">
               {expense.purpose}

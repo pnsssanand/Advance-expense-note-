@@ -14,7 +14,7 @@ export function AddExpenseButton({ onExpenseAdded }: AddExpenseButtonProps) {
     <>
       <Button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-fab hover:scale-110 transition-smooth z-40"
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-fab hover:scale-110 transition-smooth floating-fab z-40 hover-lift"
         size="icon"
       >
         <Plus className="h-6 w-6" />

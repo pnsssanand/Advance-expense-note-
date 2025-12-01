@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Wallets } from '@/types/expense';
@@ -38,17 +38,36 @@ export function Dashboard() {
     if (!user) return;
 
     try {
-      const walletsRef = doc(db, 'users', user.uid, 'wallets', 'balances');
-      const walletsSnap = await getDoc(walletsRef);
+      // Load banks
+      const banksQuery = query(collection(db, 'users', user.uid, 'banks'));
+      const banksSnap = await getDocs(banksQuery);
+      const banks = banksSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        lastUpdated: doc.data().lastUpdated?.toDate() || new Date(),
+      }));
 
-      if (walletsSnap.exists()) {
-        const data = walletsSnap.data();
-        setWallets({
-          bank: data.bank || { balance: 0, lastUpdated: new Date() },
-          creditCard: data.creditCard || { balance: 0, lastUpdated: new Date() },
-          cash: data.cash || { balance: 0, lastUpdated: new Date() },
-        });
-      }
+      // Load credit cards
+      const cardsQuery = query(collection(db, 'users', user.uid, 'creditCards'));
+      const cardsSnap = await getDocs(cardsQuery);
+      const creditCards = cardsSnap.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        lastUpdated: doc.data().lastUpdated?.toDate() || new Date(),
+      }));
+
+      // Load cash
+      const cashRef = doc(db, 'users', user.uid, 'wallets', 'cash');
+      const cashSnap = await getDoc(cashRef);
+      const cash = cashSnap.exists()
+        ? { balance: cashSnap.data().balance || 0, lastUpdated: cashSnap.data().lastUpdated?.toDate() || new Date() }
+        : { balance: 0, lastUpdated: new Date() };
+
+      setWallets({
+        banks,
+        creditCards,
+        cash,
+      });
     } catch (error) {
       console.error('Error loading wallets:', error);
       toast.error('Failed to load wallet balances');
@@ -67,17 +86,25 @@ export function Dashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-24 scroll-smooth">
       <Header />
       
       <div className="container py-6 space-y-6">
-        <WalletCards wallets={wallets} onUpdate={loadWallets} />
+        <div className="animate-fade-in">
+          <WalletCards wallets={wallets} onUpdate={loadWallets} />
+        </div>
         
-        <ExpenseChart />
+        <div className="animate-fade-in" style={{ animationDelay: '0.1s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s forwards' }}>
+          <ExpenseChart />
+        </div>
         
-        <ExpenseList onExpenseChange={loadWallets} />
+        <div className="animate-fade-in" style={{ animationDelay: '0.2s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.2s forwards' }}>
+          <ExpenseList onExpenseChange={loadWallets} />
+        </div>
         
-        <NotesSection />
+        <div className="animate-fade-in" style={{ animationDelay: '0.3s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards' }}>
+          <NotesSection />
+        </div>
       </div>
 
       <AddExpenseButton onExpenseAdded={loadWallets} />

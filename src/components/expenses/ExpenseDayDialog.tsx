@@ -1,5 +1,6 @@
 import { format } from 'date-fns';
 import { Expense } from '@/types/expense';
+import { formatINR } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -31,7 +32,7 @@ export function ExpenseDayDialog({ date, expenses, open, onOpenChange }: Expense
         <DialogHeader>
           <DialogTitle>{format(new Date(date), 'MMMM dd, yyyy')}</DialogTitle>
           <DialogDescription>
-            {dayExpenses.length} expense{dayExpenses.length !== 1 ? 's' : ''} • Total: ${total.toFixed(2)}
+            {dayExpenses.length} expense{dayExpenses.length !== 1 ? 's' : ''} • Total: {formatINR(total)}
           </DialogDescription>
         </DialogHeader>
 

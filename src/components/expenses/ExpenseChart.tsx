@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatINR } from '@/lib/utils';
 import { Expense } from '@/types/expense';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -126,7 +127,7 @@ export function ExpenseChart() {
         padding: 12,
         displayColors: false,
         callbacks: {
-          label: (context: any) => `$${context.parsed.y.toFixed(2)}`,
+          label: (context: any) => formatINR(context.parsed.y),
         },
       },
     },
@@ -138,7 +139,7 @@ export function ExpenseChart() {
           drawBorder: false,
         },
         ticks: {
-          callback: (value: any) => `$${value}`,
+          callback: (value: any) => formatINR(value),
           color: 'hsl(var(--muted-foreground))',
         },
       },
@@ -155,7 +156,7 @@ export function ExpenseChart() {
 
   return (
     <>
-      <Card className="shadow-card">
+      <Card className="shadow-card hover-lift">
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Spending Overview</CardTitle>

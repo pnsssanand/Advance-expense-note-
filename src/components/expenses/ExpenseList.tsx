@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { collection, query, orderBy, limit, getDocs, doc, deleteDoc, runTransaction } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, deleteDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Expense } from '@/types/expense';
@@ -56,20 +56,39 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
       const expense = expenses.find((e) => e.id === expenseId);
       if (!expense) return;
 
-      const walletRef = doc(db, 'users', user.uid, 'wallets', 'balances');
       const expenseRef = doc(db, 'users', user.uid, 'expenses', expenseId);
 
       await runTransaction(db, async (tx) => {
-        const walletSnap = await tx.get(walletRef);
-        if (!walletSnap.exists()) throw new Error('Wallet not found');
-
-        const walletData = walletSnap.data();
-        const currentBalance = walletData[expense.wallet]?.balance || 0;
-        const newBalance = currentBalance + expense.amount; // Refund the amount
-
-        tx.update(walletRef, {
-          [`${expense.wallet}.balance`]: newBalance,
-        });
+        // Refund to appropriate wallet
+        if (expense.wallet === 'bank' && expense.walletId) {
+          const bankRef = doc(db, 'users', user.uid, 'banks', expense.walletId);
+          const bankSnap = await tx.get(bankRef);
+          if (bankSnap.exists()) {
+            const currentBalance = bankSnap.data().balance || 0;
+            tx.update(bankRef, {
+              balance: currentBalance + expense.amount,
+              lastUpdated: serverTimestamp(),
+            });
+          }
+        } else if (expense.wallet === 'creditCard' && expense.walletId) {
+          const cardRef = doc(db, 'users', user.uid, 'creditCards', expense.walletId);
+          const cardSnap = await tx.get(cardRef);
+          if (cardSnap.exists()) {
+            const currentDue = cardSnap.data().dueAmount || 0;
+            tx.update(cardRef, {
+              dueAmount: Math.max(0, currentDue - expense.amount),
+              lastUpdated: serverTimestamp(),
+            });
+          }
+        } else if (expense.wallet === 'cash') {
+          const cashRef = doc(db, 'users', user.uid, 'wallets', 'cash');
+          const cashSnap = await tx.get(cashRef);
+          const currentBalance = cashSnap.exists() ? cashSnap.data().balance || 0 : 0;
+          tx.set(cashRef, {
+            balance: currentBalance + expense.amount,
+            lastUpdated: serverTimestamp(),
+          }, { merge: true });
+        }
 
         tx.delete(expenseRef);
       });
