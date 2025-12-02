@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatINR } from '@/lib/utils';
 import { Expense } from '@/types/expense';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -16,8 +24,9 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
 import { ExpenseDayDialog } from './ExpenseDayDialog';
+import { ExpenseItem } from './ExpenseItem';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
@@ -29,12 +38,50 @@ export function ExpenseChart() {
   const [chartData, setChartData] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [decemberTotal, setDecemberTotal] = useState<number>(0);
+  const [decemberExpenses, setDecemberExpenses] = useState<Expense[]>([]);
+  const [showDecemberDialog, setShowDecemberDialog] = useState(false);
 
   useEffect(() => {
     if (user) {
       loadExpenses();
     }
   }, [user, timeRange]);
+
+  // Real-time listener for December expenses
+  useEffect(() => {
+    if (!user) return;
+
+    const currentYear = new Date().getFullYear();
+    const decemberStart = startOfMonth(new Date(currentYear, 11, 1)); // December is month 11
+    const decemberEnd = endOfMonth(new Date(currentYear, 11, 1));
+
+    const expensesRef = collection(db, 'users', user.uid, 'expenses');
+    const q = query(
+      expensesRef,
+      where('date', '>=', decemberStart),
+      where('date', '<=', decemberEnd),
+      orderBy('date', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const decExpenses = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        date: doc.data().date.toDate(),
+        createdAt: doc.data().createdAt.toDate(),
+        updatedAt: doc.data().updatedAt.toDate(),
+      })) as Expense[];
+
+      setDecemberExpenses(decExpenses);
+      const total = decExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      setDecemberTotal(total);
+    }, (error) => {
+      console.error('Error listening to December expenses:', error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const loadExpenses = async () => {
     if (!user) return;
@@ -158,15 +205,42 @@ export function ExpenseChart() {
     <>
       <Card className="shadow-card hover-lift">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Spending Overview</CardTitle>
-            <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="daily">Daily</TabsTrigger>
-                <TabsTrigger value="weekly">Weekly</TabsTrigger>
-                <TabsTrigger value="monthly">Monthly</TabsTrigger>
-              </TabsList>
-            </Tabs>
+          <div className="flex flex-col gap-4">
+            {/* December Total - Clickable */}
+            <Button
+              variant="ghost"
+              className="w-full p-4 h-auto flex flex-col items-start gap-1 hover:bg-primary/5 transition-smooth"
+              onClick={() => setShowDecemberDialog(true)}
+            >
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Total spent in December
+              </span>
+              <span className="text-2xl font-bold text-primary">
+                {formatINR(decemberTotal)}
+              </span>
+              {decemberExpenses.length === 0 && (
+                <span className="text-xs text-muted-foreground italic">
+                  No expenses for December yet.
+                </span>
+              )}
+              {decemberExpenses.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {decemberExpenses.length} expense{decemberExpenses.length !== 1 ? 's' : ''} • Click to view details
+                </span>
+              )}
+            </Button>
+
+            {/* Spending Overview Header */}
+            <div className="flex items-center justify-between">
+              <CardTitle>Spending Overview</CardTitle>
+              <Tabs value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="daily">Daily</TabsTrigger>
+                  <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -185,6 +259,30 @@ export function ExpenseChart() {
         open={!!selectedDate}
         onOpenChange={(open) => !open && setSelectedDate(null)}
       />
+
+      {/* December Expenses Dialog */}
+      <Dialog open={showDecemberDialog} onOpenChange={setShowDecemberDialog}>
+        <DialogContent className="max-w-md w-[95vw] max-h-[80vh] overflow-y-auto sm:w-full">
+          <DialogHeader>
+            <DialogTitle>December {new Date().getFullYear()} Expenses</DialogTitle>
+            <DialogDescription>
+              {decemberExpenses.length} expense{decemberExpenses.length !== 1 ? 's' : ''} • Total: {formatINR(decemberTotal)}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 py-4">
+            {decemberExpenses.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                No expenses for December yet.
+              </p>
+            ) : (
+              decemberExpenses.map((expense) => (
+                <ExpenseItem key={expense.id} expense={expense} onUpdate={() => {}} />
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

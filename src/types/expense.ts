@@ -7,7 +7,7 @@ export interface Expense {
   category: string;
   purpose: string;
   wallet: WalletType;
-  walletId?: string; // ID of specific bank or credit card
+  walletId: string; // ID of specific bank/credit card, or 'cash' for cash wallet
   date: Date;
   attachments: string[];
   createdAt: Date;

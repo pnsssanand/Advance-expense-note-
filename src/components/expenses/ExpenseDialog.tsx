@@ -47,7 +47,8 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
       setCategory(expense.category);
       setPurpose(expense.purpose);
       setWallet(expense.wallet);
-      setWalletId(expense.walletId || '');
+      // Ensure walletId is set, default to 'cash' for cash wallet
+      setWalletId(expense.walletId || (expense.wallet === 'cash' ? 'cash' : ''));
       setDate(expense.date.toISOString().slice(0, 16));
       setAttachments(expense.attachments);
     } else {
@@ -56,7 +57,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
       setCategory('');
       setPurpose('');
       setWallet('cash');
-      setWalletId('');
+      setWalletId('cash'); // Default to 'cash' for cash wallet
       setDate(new Date().toISOString().slice(0, 16));
       setAttachments([]);
     }
@@ -133,23 +134,49 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
       return;
     }
 
+    // Validate wallet type and walletId
+    if (!wallet) {
+      toast.error('Please select a payment method');
+      return;
+    }
+
+    // Validate walletId for bank and credit card
+    if ((wallet === 'bank' || wallet === 'creditCard') && !walletId) {
+      toast.error(`Please select a ${wallet === 'bank' ? 'bank account' : 'credit card'}`);
+      return;
+    }
+
     setSaving(true);
 
     try {
+      // Determine the correct walletId
+      let finalWalletId: string;
+      if (wallet === 'cash') {
+        finalWalletId = 'cash';
+      } else if (wallet === 'bank' || wallet === 'creditCard') {
+        if (!walletId) {
+          throw new Error(`Invalid ${wallet === 'bank' ? 'bank account' : 'credit card'} selection`);
+        }
+        finalWalletId = walletId;
+      } else {
+        throw new Error('Invalid wallet type');
+      }
+
       const expenseData = {
         amount: amountNum,
         currency: 'INR',
         category,
         purpose,
         wallet,
-        walletId: (wallet === 'bank' || wallet === 'creditCard') ? walletId : undefined,
+        walletId: finalWalletId,
         date: new Date(date),
         attachments,
       };
 
       if (expense) {
         // Update existing expense
-        await updateExpense(expense.id, expenseData, expense.amount, expense.wallet, expense.walletId);
+        const oldWalletId = expense.wallet === 'cash' ? 'cash' : (expense.walletId || '');
+        await updateExpense(expense.id, expenseData, expense.amount, expense.wallet, oldWalletId);
       } else {
         // Create new expense
         await createExpense(expenseData);
@@ -167,13 +194,17 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
   const createExpense = async (expenseData: any) => {
     if (!user) return;
 
+    // Validate walletId is present
+    if (!expenseData.walletId) {
+      throw new Error('Invalid payment method. Please try again.');
+    }
+
     const expensesRef = collection(db, 'users', user.uid, 'expenses');
 
     await runTransaction(db, async (tx) => {
       let walletRef;
       
       if (expenseData.wallet === 'bank') {
-        if (!expenseData.walletId) throw new Error('Please select a bank account');
         walletRef = doc(db, 'users', user.uid, 'banks', expenseData.walletId);
         const walletSnap = await tx.get(walletRef);
         if (!walletSnap.exists()) throw new Error('Bank account not found');
@@ -190,7 +221,6 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
           lastUpdated: serverTimestamp(),
         });
       } else if (expenseData.wallet === 'creditCard') {
-        if (!expenseData.walletId) throw new Error('Please select a credit card');
         walletRef = doc(db, 'users', user.uid, 'creditCards', expenseData.walletId);
         const walletSnap = await tx.get(walletRef);
         if (!walletSnap.exists()) throw new Error('Credit card not found');
@@ -203,6 +233,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
           lastUpdated: serverTimestamp(),
         });
       } else if (expenseData.wallet === 'cash') {
+        // For cash, walletId should be 'cash'
         walletRef = doc(db, 'users', user.uid, 'wallets', 'cash');
         const walletSnap = await tx.get(walletRef);
         
@@ -235,15 +266,20 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
     expenseData: any,
     oldAmount: number,
     oldWallet: WalletType,
-    oldWalletId?: string
+    oldWalletId: string
   ) => {
     if (!user) return;
+
+    // Validate new walletId is present
+    if (!expenseData.walletId) {
+      throw new Error('Invalid payment method. Please try again.');
+    }
 
     const expenseRef = doc(db, 'users', user.uid, 'expenses', expenseId);
 
     await runTransaction(db, async (tx) => {
       // Refund old wallet
-      if (oldWallet === 'bank' && oldWalletId) {
+      if (oldWallet === 'bank' && oldWalletId && oldWalletId !== 'cash') {
         const oldBankRef = doc(db, 'users', user.uid, 'banks', oldWalletId);
         const oldBankSnap = await tx.get(oldBankRef);
         if (oldBankSnap.exists()) {
@@ -253,7 +289,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
             lastUpdated: serverTimestamp(),
           });
         }
-      } else if (oldWallet === 'creditCard' && oldWalletId) {
+      } else if (oldWallet === 'creditCard' && oldWalletId && oldWalletId !== 'cash') {
         const oldCardRef = doc(db, 'users', user.uid, 'creditCards', oldWalletId);
         const oldCardSnap = await tx.get(oldCardRef);
         if (oldCardSnap.exists()) {
@@ -328,7 +364,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto animate-slide-up">
+      <DialogContent className="max-w-md w-[95vw] max-h-[90vh] overflow-y-auto animate-slide-up sm:w-full">
         <DialogHeader>
           <DialogTitle>{expense ? 'Edit Expense' : 'Add New Expense'}</DialogTitle>
           <DialogDescription>
@@ -336,7 +372,7 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-2">
             <Label htmlFor="amount">Amount (₹) *</Label>
             <div className="relative">
@@ -388,7 +424,8 @@ export function ExpenseDialog({ open, onOpenChange, expense, onSuccess }: Expens
               value={wallet} 
               onValueChange={(v) => {
                 setWallet(v as WalletType);
-                setWalletId('');
+                // Set walletId to 'cash' for cash wallet, otherwise reset
+                setWalletId(v === 'cash' ? 'cash' : '');
               }} 
               required
             >

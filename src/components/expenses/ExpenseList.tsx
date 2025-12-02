@@ -4,6 +4,8 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Expense } from '@/types/expense';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ChevronDown } from 'lucide-react';
 import { ExpenseItem } from './ExpenseItem';
 import { ExpenseDialog } from './ExpenseDialog';
 import { toast } from 'sonner';
@@ -17,6 +19,7 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
 
   useEffect(() => {
     if (user) {
@@ -60,8 +63,10 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
 
       await runTransaction(db, async (tx) => {
         // Refund to appropriate wallet
-        if (expense.wallet === 'bank' && expense.walletId) {
-          const bankRef = doc(db, 'users', user.uid, 'banks', expense.walletId);
+        const walletId = expense.wallet === 'cash' ? 'cash' : expense.walletId;
+        
+        if (expense.wallet === 'bank' && walletId && walletId !== 'cash') {
+          const bankRef = doc(db, 'users', user.uid, 'banks', walletId);
           const bankSnap = await tx.get(bankRef);
           if (bankSnap.exists()) {
             const currentBalance = bankSnap.data().balance || 0;
@@ -70,8 +75,8 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
               lastUpdated: serverTimestamp(),
             });
           }
-        } else if (expense.wallet === 'creditCard' && expense.walletId) {
-          const cardRef = doc(db, 'users', user.uid, 'creditCards', expense.walletId);
+        } else if (expense.wallet === 'creditCard' && walletId && walletId !== 'cash') {
+          const cardRef = doc(db, 'users', user.uid, 'creditCards', walletId);
           const cardSnap = await tx.get(cardRef);
           if (cardSnap.exists()) {
             const currentDue = cardSnap.data().dueAmount || 0;
@@ -105,12 +110,23 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
   if (loading) {
     return (
       <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Recent Expenses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-center text-muted-foreground py-8">Loading...</p>
-        </CardContent>
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CardHeader className="pb-3">
+            <CollapsibleTrigger className="flex items-center justify-between w-full group">
+              <CardTitle>Recent Expenses</CardTitle>
+              <ChevronDown 
+                className={`h-5 w-5 text-muted-foreground transition-transform duration-300 ease-in-out group-hover:text-foreground ${
+                  isOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent className="data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
+            <CardContent>
+              <p className="text-center text-muted-foreground py-8">Loading...</p>
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
     );
   }
@@ -118,28 +134,39 @@ export function ExpenseList({ onExpenseChange }: ExpenseListProps) {
   return (
     <>
       <Card className="shadow-card">
-        <CardHeader>
-          <CardTitle>Recent Expenses</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {expenses.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
-              No expenses yet. Add your first expense!
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {expenses.map((expense) => (
-                <ExpenseItem
-                  key={expense.id}
-                  expense={expense}
-                  onUpdate={loadExpenses}
-                  onEdit={setEditingExpense}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
-          )}
-        </CardContent>
+        <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+          <CardHeader className="pb-3">
+            <CollapsibleTrigger className="flex items-center justify-between w-full group">
+              <CardTitle>Recent Expenses</CardTitle>
+              <ChevronDown 
+                className={`h-5 w-5 text-muted-foreground transition-transform duration-300 ease-in-out group-hover:text-foreground ${
+                  isOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </CollapsibleTrigger>
+          </CardHeader>
+          <CollapsibleContent className="data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up">
+            <CardContent>
+              {expenses.length === 0 ? (
+                <p className="text-center text-muted-foreground py-8">
+                  No expenses yet. Add your first expense!
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {expenses.map((expense) => (
+                    <ExpenseItem
+                      key={expense.id}
+                      expense={expense}
+                      onUpdate={loadExpenses}
+                      onEdit={setEditingExpense}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </CollapsibleContent>
+        </Collapsible>
       </Card>
 
       {editingExpense && (
