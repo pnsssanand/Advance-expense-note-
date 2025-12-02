@@ -9,6 +9,7 @@ import { ExpenseList } from '@/components/expenses/ExpenseList';
 import { NotesSection } from '@/components/notes/NotesSection';
 import { AddExpenseButton } from '@/components/expenses/AddExpenseButton';
 import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
 import { toast } from 'sonner';
 
 export function Dashboard() {
@@ -106,6 +107,8 @@ export function Dashboard() {
           <NotesSection />
         </div>
       </div>
+
+      <Footer />
 
       <AddExpenseButton onExpenseAdded={loadWallets} />
     </div>
