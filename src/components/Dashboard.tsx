@@ -7,6 +7,8 @@ import { WalletCards } from '@/components/wallet/WalletCards';
 import { ExpenseChart } from '@/components/expenses/ExpenseChart';
 import { ExpenseList } from '@/components/expenses/ExpenseList';
 import { NotesSection } from '@/components/notes/NotesSection';
+import { RefundsSection } from '@/components/refunds/RefundsSection';
+import { AdvancesSection } from '@/components/advances/AdvancesSection';
 import { AddExpenseButton } from '@/components/expenses/AddExpenseButton';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
@@ -104,6 +106,14 @@ export function Dashboard() {
         </div>
         
         <div className="animate-fade-in" style={{ animationDelay: '0.3s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s forwards' }}>
+          <RefundsSection />
+        </div>
+        
+        <div className="animate-fade-in" style={{ animationDelay: '0.4s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.4s forwards' }}>
+          <AdvancesSection />
+        </div>
+        
+        <div className="animate-fade-in" style={{ animationDelay: '0.5s', opacity: 0, animation: 'fade-in 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.5s forwards' }}>
           <NotesSection />
         </div>
       </div>

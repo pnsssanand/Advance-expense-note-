@@ -49,6 +49,26 @@ export interface Note {
   updatedAt: Date;
 }
 
+export interface Refund {
+  id: string;
+  name: string; // Who should refund the money
+  amount: number;
+  purpose: string; // Why this refund is expected
+  status: 'pending' | 'received';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Advance {
+  id: string;
+  name: string; // Person I gave money to
+  amount: number;
+  purpose: string; // Why I gave the amount
+  status: 'outstanding' | 'returned';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface Transaction {
   id: string;
   wallet: WalletType;
