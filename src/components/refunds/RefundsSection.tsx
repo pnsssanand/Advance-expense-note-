@@ -16,7 +16,7 @@ export function RefundsSection() {
   const { user } = useAuth();
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRefund, setEditingRefund] = useState<Refund | null>(null);
 

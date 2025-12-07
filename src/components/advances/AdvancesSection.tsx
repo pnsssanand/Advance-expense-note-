@@ -16,7 +16,7 @@ export function AdvancesSection() {
   const { user } = useAuth();
   const [advances, setAdvances] = useState<Advance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAdvance, setEditingAdvance] = useState<Advance | null>(null);
 

@@ -32,8 +32,8 @@ interface WalletCardsProps {
 
 export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
   const { user } = useAuth();
-  const [banksOpen, setBanksOpen] = useState(true);
-  const [cardsOpen, setCardsOpen] = useState(true);
+  const [banksOpen, setBanksOpen] = useState(false);
+  const [cardsOpen, setCardsOpen] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
   
   const [bankDialogOpen, setBankDialogOpen] = useState(false);
