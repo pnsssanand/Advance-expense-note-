@@ -51,7 +51,7 @@ export function RefundsSection() {
   const receivedRefunds = refunds.filter(r => r.status === 'received');
   const totalReceived = receivedRefunds.reduce((sum, r) => sum + r.amount, 0);
 
-  const handleSaveRefund = async (data: { name: string; amount: number; purpose: string }) => {
+  const handleSaveRefund = async (data: { name: string; amount: number; purpose: string; contactNumber: string }) => {
     if (!user) return;
 
     try {

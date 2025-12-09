@@ -16,13 +16,14 @@ interface RefundDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   refund?: Refund | null;
-  onSave: (data: { name: string; amount: number; purpose: string }) => Promise<void>;
+  onSave: (data: { name: string; amount: number; purpose: string; contactNumber: string }) => Promise<void>;
 }
 
 export function RefundDialog({ open, onOpenChange, refund, onSave }: RefundDialogProps) {
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [contactNumber, setContactNumber] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -30,10 +31,12 @@ export function RefundDialog({ open, onOpenChange, refund, onSave }: RefundDialo
       setName(refund.name);
       setAmount(refund.amount.toString());
       setPurpose(refund.purpose);
+      setContactNumber(refund.contactNumber || '');
     } else {
       setName('');
       setAmount('');
       setPurpose('');
+      setContactNumber('');
     }
   }, [refund, open]);
 
@@ -55,6 +58,7 @@ export function RefundDialog({ open, onOpenChange, refund, onSave }: RefundDialo
         name: name.trim(),
         amount: amountNum,
         purpose: purpose.trim(),
+        contactNumber: contactNumber.trim(),
       });
       onOpenChange(false);
     } finally {
@@ -111,6 +115,23 @@ export function RefundDialog({ open, onOpenChange, refund, onSave }: RefundDialo
               required
               rows={3}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="contactNumber">Contact Number (Optional)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold text-sm">+91</span>
+              <Input
+                id="contactNumber"
+                type="tel"
+                placeholder="9876543210"
+                className="pl-12"
+                value={contactNumber}
+                onChange={(e) => setContactNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                maxLength={10}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Enter 10-digit mobile number for quick call/WhatsApp</p>
           </div>
 
           <div className="flex gap-2 pt-4">

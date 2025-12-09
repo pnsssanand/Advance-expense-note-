@@ -43,6 +43,32 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
   const [cashAmount, setCashAmount] = useState('');
   const [editingCash, setEditingCash] = useState(false);
 
+  // Handle double-click on bank total to open dialog
+  const handleBankDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (wallets.banks.length > 0) {
+      // Edit first bank account
+      setEditingBank(wallets.banks[0]);
+    } else {
+      // Add new bank if none exist
+      setEditingBank(undefined);
+    }
+    setBankDialogOpen(true);
+  };
+
+  // Handle double-click on credit card total to open dialog
+  const handleCardDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (wallets.creditCards.length > 0) {
+      // Edit first credit card
+      setEditingCard(wallets.creditCards[0]);
+    } else {
+      // Add new card if none exist
+      setEditingCard(undefined);
+    }
+    setCardDialogOpen(true);
+  };
+
   const totalBankBalance = wallets.banks.reduce((sum, bank) => sum + bank.balance, 0);
   const totalCreditDue = wallets.creditCards.reduce((sum, card) => sum + card.dueAmount, 0);
 
@@ -106,9 +132,13 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
                 <div className="p-2.5 rounded-xl bg-wallet-bank">
                   <Banknote className="h-5 w-5 text-wallet-bank-foreground" />
                 </div>
-                <div className="text-left">
+                <div 
+                  className="text-left cursor-pointer select-none" 
+                  onDoubleClick={handleBankDoubleClick}
+                  title="Double-click to edit balance"
+                >
                   <p className="text-sm font-medium text-muted-foreground">Bank Accounts</p>
-                  <p className="text-2xl font-heading font-bold">{formatINR(totalBankBalance)}</p>
+                  <p className="text-2xl font-heading font-bold hover:text-primary transition-colors">{formatINR(totalBankBalance)}</p>
                   <p className="text-xs text-muted-foreground">{wallets.banks.length} account{wallets.banks.length !== 1 ? 's' : ''}</p>
                 </div>
               </div>
@@ -121,7 +151,12 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
               {wallets.banks.map((bank) => (
                 <div 
                   key={bank.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-smooth group"
+                  className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-smooth group cursor-pointer"
+                  onDoubleClick={() => {
+                    setEditingBank(bank);
+                    setBankDialogOpen(true);
+                  }}
+                  title="Double-click to edit"
                 >
                   <div>
                     <p className="font-medium">{bank.name}</p>
@@ -174,9 +209,13 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
                 <div className="p-2.5 rounded-xl bg-wallet-credit">
                   <CreditCardIcon className="h-5 w-5 text-wallet-credit-foreground" />
                 </div>
-                <div className="text-left">
+                <div 
+                  className="text-left cursor-pointer select-none" 
+                  onDoubleClick={handleCardDoubleClick}
+                  title="Double-click to edit due amount"
+                >
                   <p className="text-sm font-medium text-muted-foreground">Credit Cards</p>
-                  <p className="text-2xl font-heading font-bold text-destructive">{formatINR(totalCreditDue)}</p>
+                  <p className="text-2xl font-heading font-bold text-destructive hover:text-destructive/80 transition-colors">{formatINR(totalCreditDue)}</p>
                   <p className="text-xs text-muted-foreground">{wallets.creditCards.length} card{wallets.creditCards.length !== 1 ? 's' : ''} · Total Due</p>
                 </div>
               </div>
@@ -189,7 +228,12 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
               {wallets.creditCards.map((card) => (
                 <div 
                   key={card.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-smooth group"
+                  className="flex items-center justify-between p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-smooth group cursor-pointer"
+                  onDoubleClick={() => {
+                    setEditingCard(card);
+                    setCardDialogOpen(true);
+                  }}
+                  title="Double-click to edit"
                 >
                   <div>
                     <p className="font-medium">{card.name}</p>
@@ -242,9 +286,18 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
                 <div className="p-2.5 rounded-xl bg-wallet-cash">
                   <WalletIcon className="h-5 w-5 text-wallet-cash-foreground" />
                 </div>
-                <div className="text-left">
+                <div 
+                  className="text-left cursor-pointer select-none" 
+                  onDoubleClick={(e) => {
+                    e.stopPropagation();
+                    setCashAmount(wallets.cash.balance.toString());
+                    setEditingCash(true);
+                    setCashOpen(true);
+                  }}
+                  title="Double-click to edit cash"
+                >
                   <p className="text-sm font-medium text-muted-foreground">Cash</p>
-                  <p className="text-2xl font-heading font-bold">{formatINR(wallets.cash.balance)}</p>
+                  <p className="text-2xl font-heading font-bold hover:text-primary transition-colors">{formatINR(wallets.cash.balance)}</p>
                 </div>
               </div>
               <ChevronDown className={`h-5 w-5 transition-transform ${cashOpen ? 'rotate-180' : ''}`} />

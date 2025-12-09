@@ -54,6 +54,7 @@ export interface Refund {
   name: string; // Who should refund the money
   amount: number;
   purpose: string; // Why this refund is expected
+  contactNumber?: string; // Contact number with country code
   status: 'pending' | 'received';
   createdAt: Date;
   updatedAt: Date;

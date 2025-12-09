@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Trash2, Edit, CheckCircle2, Clock } from 'lucide-react';
+import { Trash2, Edit, CheckCircle2, Clock, Phone, MessageCircle } from 'lucide-react';
 import { Refund } from '@/types/expense';
 import { formatINR } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/card';
@@ -42,6 +42,27 @@ export function RefundItem({ refund, onEdit, onDelete, onMarkReceived }: RefundI
             <p className="text-sm text-muted-foreground mb-1">
               {refund.purpose}
             </p>
+            {refund.contactNumber && (
+              <div className="flex items-center gap-2 mt-2 mb-1">
+                <span className="text-xs text-muted-foreground">+91 {refund.contactNumber}</span>
+                <a
+                  href={`tel:+91${refund.contactNumber}`}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 transition-colors"
+                  title="Call"
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </a>
+                <a
+                  href={`https://wa.me/91${refund.contactNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-green-100 hover:bg-green-200 text-green-600 transition-colors"
+                  title="WhatsApp"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                </a>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               Added {format(refund.createdAt, 'MMM dd, yyyy')}
             </p>
