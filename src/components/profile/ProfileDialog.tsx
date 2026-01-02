@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, PiggyBank } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import {
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Separator } from '@/components/ui/separator';
+import { SavingsDialog } from '@/components/savings/SavingsDialog';
 import { toast } from 'sonner';
 
 interface ProfileDialogProps {
@@ -26,6 +28,7 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
   const [occupation, setOccupation] = useState(userProfile?.occupation || '');
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showSavingsDialog, setShowSavingsDialog] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -123,6 +126,24 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
             </div>
           </div>
 
+          <Separator />
+
+          {/* Savings Section */}
+          <div className="space-y-2">
+            <Label>Savings</Label>
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-2 h-12"
+              onClick={() => setShowSavingsDialog(true)}
+            >
+              <PiggyBank className="h-5 w-5 text-primary" />
+              <span>Manage My Savings</span>
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Securely track your cash and bank savings with PIN protection
+            </p>
+          </div>
+
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -137,6 +158,11 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
           </div>
         </div>
       </DialogContent>
+
+      <SavingsDialog 
+        open={showSavingsDialog} 
+        onOpenChange={setShowSavingsDialog} 
+      />
     </Dialog>
   );
 }

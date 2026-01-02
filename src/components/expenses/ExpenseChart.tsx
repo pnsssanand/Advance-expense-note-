@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -24,13 +31,21 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfDay, endOfDay, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { ExpenseDayDialog } from './ExpenseDayDialog';
 import { ExpenseItem } from './ExpenseItem';
+import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 type TimeRange = 'daily' | 'weekly' | 'monthly';
+
+interface MonthOption {
+  value: string;
+  label: string;
+  month: number;
+  year: number;
+}
 
 export function ExpenseChart() {
   const { user } = useAuth();
@@ -38,9 +53,60 @@ export function ExpenseChart() {
   const [chartData, setChartData] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [decemberTotal, setDecemberTotal] = useState<number>(0);
-  const [decemberExpenses, setDecemberExpenses] = useState<Expense[]>([]);
-  const [showDecemberDialog, setShowDecemberDialog] = useState(false);
+  const [monthlyTotal, setMonthlyTotal] = useState<number>(0);
+  const [monthlyExpenses, setMonthlyExpenses] = useState<Expense[]>([]);
+  const [showMonthDialog, setShowMonthDialog] = useState(false);
+  
+  // Current month state - defaults to current month
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${now.getMonth()}`;
+  });
+
+  // Generate list of available months (current + past 11 months)
+  const monthOptions = useMemo<MonthOption[]>(() => {
+    const options: MonthOption[] = [];
+    const now = new Date();
+    
+    for (let i = 0; i < 12; i++) {
+      const date = subMonths(now, i);
+      const month = date.getMonth();
+      const year = date.getFullYear();
+      const monthName = format(date, 'MMMM yyyy');
+      
+      options.push({
+        value: `${year}-${month}`,
+        label: monthName,
+        month,
+        year,
+      });
+    }
+    
+    return options;
+  }, []);
+
+  // Get current selected month details
+  const currentMonthDetails = useMemo(() => {
+    const option = monthOptions.find(opt => opt.value === selectedMonth);
+    if (option) {
+      return option;
+    }
+    // Fallback to current month
+    const now = new Date();
+    return {
+      value: `${now.getFullYear()}-${now.getMonth()}`,
+      label: format(now, 'MMMM yyyy'),
+      month: now.getMonth(),
+      year: now.getFullYear(),
+    };
+  }, [selectedMonth, monthOptions]);
+
+  // Check if viewing current month
+  const isCurrentMonth = useMemo(() => {
+    const now = new Date();
+    return currentMonthDetails.month === now.getMonth() && 
+           currentMonthDetails.year === now.getFullYear();
+  }, [currentMonthDetails]);
 
   useEffect(() => {
     if (user) {
@@ -48,24 +114,23 @@ export function ExpenseChart() {
     }
   }, [user, timeRange]);
 
-  // Real-time listener for December expenses
+  // Real-time listener for selected month expenses
   useEffect(() => {
     if (!user) return;
 
-    const currentYear = new Date().getFullYear();
-    const decemberStart = startOfMonth(new Date(currentYear, 11, 1)); // December is month 11
-    const decemberEnd = endOfMonth(new Date(currentYear, 11, 1));
+    const monthStart = startOfMonth(new Date(currentMonthDetails.year, currentMonthDetails.month, 1));
+    const monthEnd = endOfMonth(new Date(currentMonthDetails.year, currentMonthDetails.month, 1));
 
     const expensesRef = collection(db, 'users', user.uid, 'expenses');
     const q = query(
       expensesRef,
-      where('date', '>=', decemberStart),
-      where('date', '<=', decemberEnd),
+      where('date', '>=', monthStart),
+      where('date', '<=', monthEnd),
       orderBy('date', 'desc')
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const decExpenses = snapshot.docs.map((doc) => ({
+      const monthExpenses = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         date: doc.data().date.toDate(),
@@ -73,15 +138,66 @@ export function ExpenseChart() {
         updatedAt: doc.data().updatedAt.toDate(),
       })) as Expense[];
 
-      setDecemberExpenses(decExpenses);
-      const total = decExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-      setDecemberTotal(total);
+      setMonthlyExpenses(monthExpenses);
+      const total = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+      setMonthlyTotal(total);
     }, (error) => {
-      console.error('Error listening to December expenses:', error);
+      console.error('Error listening to monthly expenses:', error);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, currentMonthDetails]);
+
+  // Auto-switch to current month when month changes
+  useEffect(() => {
+    const checkAndSwitchMonth = () => {
+      const now = new Date();
+      const currentMonthValue = `${now.getFullYear()}-${now.getMonth()}`;
+      
+      // If the selected month is not in our options anymore, switch to current month
+      const exists = monthOptions.some(opt => opt.value === selectedMonth);
+      if (!exists) {
+        setSelectedMonth(currentMonthValue);
+      }
+    };
+    
+    // Check on mount and set up interval to check at midnight
+    checkAndSwitchMonth();
+    
+    // Calculate time until next day
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const timeUntilMidnight = tomorrow.getTime() - now.getTime();
+    
+    const midnightTimeout = setTimeout(() => {
+      checkAndSwitchMonth();
+      // Set up daily interval after first midnight
+      const dailyInterval = setInterval(checkAndSwitchMonth, 24 * 60 * 60 * 1000);
+      return () => clearInterval(dailyInterval);
+    }, timeUntilMidnight);
+    
+    return () => clearTimeout(midnightTimeout);
+  }, [monthOptions, selectedMonth]);
+
+  // Navigate to previous month
+  const goToPreviousMonth = () => {
+    const currentIndex = monthOptions.findIndex(opt => opt.value === selectedMonth);
+    if (currentIndex < monthOptions.length - 1) {
+      setSelectedMonth(monthOptions[currentIndex + 1].value);
+    }
+  };
+
+  // Navigate to next month
+  const goToNextMonth = () => {
+    const currentIndex = monthOptions.findIndex(opt => opt.value === selectedMonth);
+    if (currentIndex > 0) {
+      setSelectedMonth(monthOptions[currentIndex - 1].value);
+    }
+  };
+
+  // Check if can navigate
+  const canGoPrevious = monthOptions.findIndex(opt => opt.value === selectedMonth) < monthOptions.length - 1;
+  const canGoNext = monthOptions.findIndex(opt => opt.value === selectedMonth) > 0;
 
   const loadExpenses = async () => {
     if (!user) return;
@@ -206,26 +322,63 @@ export function ExpenseChart() {
       <Card className="shadow-card hover-lift">
         <CardHeader>
           <div className="flex flex-col gap-4">
-            {/* December Total - Clickable */}
+            {/* Month Selector */}
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={goToPreviousMonth}
+                disabled={!canGoPrevious}
+                className="h-8 w-8"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[180px] text-center">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={goToNextMonth}
+                disabled={!canGoNext}
+                className="h-8 w-8"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* Monthly Total - Clickable */}
             <Button
               variant="ghost"
               className="w-full p-4 h-auto flex flex-col items-start gap-1 hover:bg-primary/5 transition-smooth"
-              onClick={() => setShowDecemberDialog(true)}
+              onClick={() => setShowMonthDialog(true)}
             >
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                Total spent in December
+                Total spent in {currentMonthDetails.label}
               </span>
               <span className="text-2xl font-bold text-primary">
-                {formatINR(decemberTotal)}
+                {formatINR(monthlyTotal)}
               </span>
-              {decemberExpenses.length === 0 && (
+              {monthlyExpenses.length === 0 && (
                 <span className="text-xs text-muted-foreground italic">
-                  No expenses for December yet.
+                  No expenses for {currentMonthDetails.label} yet.
                 </span>
               )}
-              {decemberExpenses.length > 0 && (
+              {monthlyExpenses.length > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  {decemberExpenses.length} expense{decemberExpenses.length !== 1 ? 's' : ''} • Click to view details
+                  {monthlyExpenses.length} expense{monthlyExpenses.length !== 1 ? 's' : ''} • Click to view details
                 </span>
               )}
             </Button>
@@ -260,23 +413,23 @@ export function ExpenseChart() {
         onOpenChange={(open) => !open && setSelectedDate(null)}
       />
 
-      {/* December Expenses Dialog */}
-      <Dialog open={showDecemberDialog} onOpenChange={setShowDecemberDialog}>
+      {/* Monthly Expenses Dialog */}
+      <Dialog open={showMonthDialog} onOpenChange={setShowMonthDialog}>
         <DialogContent className="max-w-md w-[95vw] max-h-[80vh] overflow-y-auto sm:w-full">
           <DialogHeader>
-            <DialogTitle>December {new Date().getFullYear()} Expenses</DialogTitle>
+            <DialogTitle>{currentMonthDetails.label} Expenses</DialogTitle>
             <DialogDescription>
-              {decemberExpenses.length} expense{decemberExpenses.length !== 1 ? 's' : ''} • Total: {formatINR(decemberTotal)}
+              {monthlyExpenses.length} expense{monthlyExpenses.length !== 1 ? 's' : ''} • Total: {formatINR(monthlyTotal)}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2 py-4">
-            {decemberExpenses.length === 0 ? (
+            {monthlyExpenses.length === 0 ? (
               <p className="text-center text-muted-foreground py-8">
-                No expenses for December yet.
+                No expenses for {currentMonthDetails.label} yet.
               </p>
             ) : (
-              decemberExpenses.map((expense) => (
+              monthlyExpenses.map((expense) => (
                 <ExpenseItem key={expense.id} expense={expense} onUpdate={() => {}} />
               ))
             )}

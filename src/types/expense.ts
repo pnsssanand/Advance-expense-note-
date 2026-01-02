@@ -80,6 +80,24 @@ export interface Transaction {
   createdAt: Date;
 }
 
+// Savings Types
+export interface SavingsBankAccount {
+  id: string;
+  bankName: string;
+  amount: number;
+  lastUpdated: Date;
+}
+
+export interface Savings {
+  pin?: string; // Hashed 4-digit PIN
+  pinSet: boolean;
+  cashSavings: number;
+  bankAccounts: SavingsBankAccount[];
+  lastAccessedAt?: Date;
+  lastUpdatedAt?: Date;
+  createdAt?: Date;
+}
+
 export const EXPENSE_CATEGORIES = [
   'Groceries',
   'Dining',
