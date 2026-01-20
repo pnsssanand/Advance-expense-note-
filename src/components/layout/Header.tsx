@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LogOut, Settings, User } from 'lucide-react';
+import { LogOut, Settings, User, Building2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -10,10 +10,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ProfileDialog } from '@/components/profile/ProfileDialog';
+import { BankDetailsDialog } from '@/components/profile/BankDetailsDialog';
 
 export function Header() {
   const { userProfile, signOut } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
+  const [showBankDetails, setShowBankDetails] = useState(false);
 
   return (
     <>
@@ -57,6 +59,10 @@ export function Header() {
                 <User className="mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowBankDetails(true)}>
+                <Building2 className="mr-2 h-4 w-4" />
+                Bank Details
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={signOut}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Sign Out
@@ -67,6 +73,7 @@ export function Header() {
       </header>
 
       <ProfileDialog open={showProfile} onOpenChange={setShowProfile} />
+      <BankDetailsDialog open={showBankDetails} onOpenChange={setShowBankDetails} />
     </>
   );
 }

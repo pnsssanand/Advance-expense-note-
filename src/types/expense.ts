@@ -98,6 +98,53 @@ export interface Savings {
   createdAt?: Date;
 }
 
+// Bank Details Types (Secure Storage)
+export interface BankDetails {
+  id: string;
+  // Bank Information
+  accountHolderName: string;
+  bankName: string;
+  customerId: string;
+  bankAccountNumber: string; // Encrypted
+  ifscCode: string;
+  // Debit Card Details
+  debitCardNumber: string; // Encrypted, only last 4 digits shown
+  cardExpiryDate: string; // MM/YY format
+  cvv: string; // Encrypted
+  atmPin: string; // Encrypted
+  // Mobile & App Banking
+  registeredMobileNumber: string; // Encrypted
+  mobileAppLoginPin: string; // Encrypted
+  mobileBankingPin: string; // Encrypted
+  // Net Banking
+  netBankingUserId: string; // Encrypted
+  netBankingPassword: string; // Encrypted
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Masked version for display
+export interface MaskedBankDetails {
+  id: string;
+  accountHolderName: string;
+  bankName: string;
+  customerId: string;
+  bankAccountNumberMasked: string; // e.g., ****1234
+  ifscCode: string;
+  debitCardNumberMasked: string; // e.g., ****5678
+  cardExpiryDate: string;
+  hasCvv: boolean;
+  hasAtmPin: boolean;
+  hasRegisteredMobileNumber: boolean;
+  hasMobileAppLoginPin: boolean;
+  hasMobileBankingPin: boolean;
+  hasNetBankingUserId: boolean;
+  hasNetBankingPassword: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export const EXPENSE_CATEGORIES = [
   'Groceries',
   'Dining',
