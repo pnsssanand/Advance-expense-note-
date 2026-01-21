@@ -19,7 +19,7 @@ interface NotificationPromptProps {
 
 export function NotificationPrompt({ showOnMount = true, delay = 3000 }: NotificationPromptProps) {
   const [showDialog, setShowDialog] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [hasResponded, setHasResponded] = useState(false);
   const { toast } = useToast();
   const {
     isSupported,
@@ -29,27 +29,31 @@ export function NotificationPrompt({ showOnMount = true, delay = 3000 }: Notific
     shouldShowPrompt
   } = useNotifications();
 
-  // Check if user has previously dismissed the prompt
+  // Check if user has already responded to the notification prompt (any response)
   useEffect(() => {
-    const hasDismissed = localStorage.getItem('notification-prompt-dismissed');
-    if (hasDismissed === 'true') {
-      setDismissed(true);
+    const notificationResponse = localStorage.getItem('notification-prompt-responded');
+    if (notificationResponse) {
+      setHasResponded(true);
     }
   }, []);
 
-  // Show prompt after delay if conditions are met
+  // Show prompt after delay if conditions are met (only if user hasn't responded before)
   useEffect(() => {
-    if (!showOnMount || dismissed || !shouldShowPrompt) return;
+    if (!showOnMount || hasResponded || !shouldShowPrompt) return;
 
     const timer = setTimeout(() => {
       setShowDialog(true);
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [showOnMount, delay, dismissed, shouldShowPrompt]);
+  }, [showOnMount, delay, hasResponded, shouldShowPrompt]);
 
   const handleEnable = async () => {
     const success = await enableNotifications();
+    
+    // Save that user has responded to the prompt
+    localStorage.setItem('notification-prompt-responded', 'enabled');
+    setHasResponded(true);
     
     if (success) {
       toast({
@@ -69,13 +73,15 @@ export function NotificationPrompt({ showOnMount = true, delay = 3000 }: Notific
 
   const handleDismiss = () => {
     setShowDialog(false);
-    setDismissed(true);
-    localStorage.setItem('notification-prompt-dismissed', 'true');
+    setHasResponded(true);
+    localStorage.setItem('notification-prompt-responded', 'dismissed');
   };
 
   const handleLater = () => {
     setShowDialog(false);
-    // Don't set dismissed, will show again on next visit
+    // Save response so prompt won't show again on future visits
+    setHasResponded(true);
+    localStorage.setItem('notification-prompt-responded', 'later');
   };
 
   // Don't render if not supported or already granted/denied
