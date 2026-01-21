@@ -12,6 +12,7 @@ import { AdvancesSection } from '@/components/advances/AdvancesSection';
 import { AddExpenseButton } from '@/components/expenses/AddExpenseButton';
 import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
+import { NotificationPrompt } from '@/components/notifications/NotificationPrompt';
 import { toast } from 'sonner';
 
 export function Dashboard() {
@@ -91,6 +92,9 @@ export function Dashboard() {
   return (
     <div className="min-h-screen bg-background pb-24 scroll-smooth">
       <Header />
+      
+      {/* Push Notification Permission Prompt */}
+      <NotificationPrompt showOnMount={true} delay={5000} />
       
       <div className="container py-6 space-y-6">
         <div className="animate-fade-in">

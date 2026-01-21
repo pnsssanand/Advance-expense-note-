@@ -17,6 +17,7 @@ interface PinDialogProps {
   mode: 'set' | 'verify';
   onPinSubmit: (pin: string) => Promise<boolean>;
   loading?: boolean;
+  context?: 'savings' | 'bankDetails'; // Optional context for custom titles
 }
 
 export function PinDialog({ 
@@ -24,7 +25,8 @@ export function PinDialog({
   onOpenChange, 
   mode, 
   onPinSubmit,
-  loading = false 
+  loading = false,
+  context = 'savings'
 }: PinDialogProps) {
   const [pin, setPin] = useState(['', '', '', '']);
   const [confirmPin, setConfirmPin] = useState(['', '', '', '']);
@@ -126,6 +128,9 @@ export function PinDialog({
     </div>
   );
 
+  const contextLabel = context === 'bankDetails' ? 'Bank Details' : 'Savings';
+  const contextDescription = context === 'bankDetails' ? 'your bank details' : 'savings';
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -134,21 +139,21 @@ export function PinDialog({
             {mode === 'set' ? (
               <>
                 <ShieldCheck className="h-5 w-5 text-primary" />
-                Set Savings PIN
+                Set {contextLabel} PIN
               </>
             ) : (
               <>
                 <Lock className="h-5 w-5 text-primary" />
-                Enter Savings PIN
+                Enter {contextLabel} PIN
               </>
             )}
           </DialogTitle>
           <DialogDescription>
             {mode === 'set' 
               ? step === 'enter'
-                ? 'Create a 4-digit PIN to secure your savings section'
+                ? `Create a 4-digit PIN to secure ${contextDescription}`
                 : 'Confirm your 4-digit PIN'
-              : 'Enter your 4-digit PIN to access savings'}
+              : `Enter your 4-digit PIN to access ${contextDescription}`}
           </DialogDescription>
         </DialogHeader>
 

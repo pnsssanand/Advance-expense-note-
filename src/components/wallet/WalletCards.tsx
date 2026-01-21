@@ -20,10 +20,22 @@ import {
   Plus,
   Edit2,
   Trash2,
+  Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BankAccountDialog } from './BankAccountDialog';
 import { CreditCardDialog } from './CreditCardDialog';
+
+// Helper function to get ordinal suffix for dates
+const getOrdinalSuffix = (day: number): string => {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+};
 
 interface WalletCardsProps {
   wallets: Wallets;
@@ -235,9 +247,17 @@ export function WalletCards({ wallets, onUpdate }: WalletCardsProps) {
                   }}
                   title="Double-click to edit"
                 >
-                  <div>
+                  <div className="flex-1">
                     <p className="font-medium">{card.name}</p>
-                    <p className="text-lg font-semibold text-destructive">Due: {formatINR(card.dueAmount)}</p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-lg font-semibold text-destructive">Due: {formatINR(card.dueAmount)}</p>
+                      {card.dueDate && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-medium rounded-full">
+                          <Calendar className="h-3 w-3" />
+                          {card.dueDate}{getOrdinalSuffix(card.dueDate)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-smooth">
                     <Button

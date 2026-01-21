@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Camera, Loader2, PiggyBank } from 'lucide-react';
+import { Camera, Loader2, PiggyBank, Bell } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import {
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { SavingsDialog } from '@/components/savings/SavingsDialog';
+import { NotificationBanner } from '@/components/notifications/NotificationPrompt';
 import { toast } from 'sonner';
 
 interface ProfileDialogProps {
@@ -142,6 +143,17 @@ export function ProfileDialog({ open, onOpenChange }: ProfileDialogProps) {
             <p className="text-xs text-muted-foreground">
               Securely track your cash and bank savings with PIN protection
             </p>
+          </div>
+
+          <Separator />
+
+          {/* Notifications Section */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              Notifications
+            </Label>
+            <NotificationBanner />
           </div>
 
           <div className="flex gap-2">

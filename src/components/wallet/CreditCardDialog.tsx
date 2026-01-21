@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface CreditCardDialogProps {
@@ -26,15 +27,18 @@ export function CreditCardDialog({ open, onOpenChange, card, onSuccess }: Credit
   const { user } = useAuth();
   const [name, setName] = useState('');
   const [dueAmount, setDueAmount] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (card) {
       setName(card.name);
       setDueAmount(card.dueAmount.toString());
+      setDueDate(card.dueDate?.toString() || '');
     } else {
       setName('');
       setDueAmount('0');
+      setDueDate('');
     }
   }, [card, open]);
 
@@ -59,9 +63,12 @@ export function CreditCardDialog({ open, onOpenChange, card, onSuccess }: Credit
       const cardId = card?.id || `card_${Date.now()}`;
       const cardRef = doc(db, 'users', user.uid, 'creditCards', cardId);
 
+      const dueDateNum = dueDate ? parseInt(dueDate) : null;
+      
       await setDoc(cardRef, {
         name,
         dueAmount: dueNum,
+        ...(dueDateNum && dueDateNum >= 1 && dueDateNum <= 31 ? { dueDate: dueDateNum } : {}),
         lastUpdated: serverTimestamp(),
       }, { merge: true });
 
@@ -114,6 +121,30 @@ export function CreditCardDialog({ open, onOpenChange, card, onSuccess }: Credit
             </div>
             <p className="text-xs text-muted-foreground">
               Leave as 0 if there's no current due
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="dueDate" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary" />
+              Bill Due Date (Day of Month)
+            </Label>
+            <Input
+              id="dueDate"
+              type="number"
+              min="1"
+              max="31"
+              placeholder="e.g., 15"
+              value={dueDate}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '' || (parseInt(value) >= 1 && parseInt(value) <= 31)) {
+                  setDueDate(value);
+                }
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Enter the day of month when your bill is due (1-31)
             </p>
           </div>
 

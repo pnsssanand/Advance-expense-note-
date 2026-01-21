@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { collection, doc, getDoc, setDoc, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { MaskedBankDetails } from '@/types/expense';
+import { MaskedBankDetails, MaskedCreditCardDetails } from '@/types/expense';
 import {
   encryptData,
   decryptData,
@@ -62,7 +62,20 @@ import {
   ArrowLeft,
   Copy,
   Share2,
+  MessageCircle,
+  Mail,
+  Send,
+  Calendar,
+  ShieldCheck,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { PinDialog } from '@/components/savings/PinDialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -86,6 +99,15 @@ interface FormErrors {
   netBankingPassword?: string;
 }
 
+interface CreditCardFormErrors {
+  cardName?: string;
+  cardHolderName?: string;
+  cardNumber?: string;
+  expiryDate?: string;
+  cvv?: string;
+  pin?: string;
+}
+
 interface FieldVisibility {
   bankAccountNumber: boolean;
   debitCardNumber: boolean;
@@ -98,17 +120,39 @@ interface FieldVisibility {
   netBankingPassword: boolean;
 }
 
-type ViewMode = 'list' | 'view' | 'edit' | 'add';
+interface CreditCardVisibility {
+  cardNumber: boolean;
+  cvv: boolean;
+  pin: boolean;
+}
+
+interface BankDetailsPinData {
+  pin?: string;
+  pinSet: boolean;
+}
+
+type ViewMode = 'list' | 'view' | 'edit' | 'add' | 'select-type' | 'add-card' | 'view-card' | 'edit-card';
+type DetailType = 'bank' | 'card';
 
 export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [bankDetailsList, setBankDetailsList] = useState<MaskedBankDetails[]>([]);
+  const [creditCardList, setCreditCardList] = useState<MaskedCreditCardDetails[]>([]);
   const [currentBankId, setCurrentBankId] = useState<string | null>(null);
+  const [currentCardId, setCurrentCardId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  
+  // PIN Authentication state
+  const [authenticated, setAuthenticated] = useState(false);
+  const [showPinDialog, setShowPinDialog] = useState(false);
+  const [pinMode, setPinMode] = useState<'set' | 'verify'>('verify');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinData, setPinData] = useState<BankDetailsPinData>({ pinSet: false });
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [bankToDelete, setBankToDelete] = useState<string | null>(null);
+  const [cardToDelete, setCardToDelete] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -128,7 +172,19 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     netBankingPassword: '',
   });
 
+  // Credit Card Form state
+  const [cardFormData, setCardFormData] = useState({
+    cardName: '',
+    cardHolderName: '',
+    cardNumber: '',
+    expiryDate: '',
+    cvv: '',
+    pin: '',
+    dueDate: '',
+  });
+
   const [errors, setErrors] = useState<FormErrors>({});
+  const [cardErrors, setCardErrors] = useState<CreditCardFormErrors>({});
   
   const [visibility, setVisibility] = useState<FieldVisibility>({
     bankAccountNumber: false,
@@ -142,10 +198,16 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     netBankingPassword: false,
   });
 
-  // Load all bank details
+  const [cardVisibility, setCardVisibility] = useState<CreditCardVisibility>({
+    cardNumber: false,
+    cvv: false,
+    pin: false,
+  });
+
+  // Load PIN data and check authentication
   useEffect(() => {
     if (open && user) {
-      loadAllBankDetails();
+      loadPinData();
     }
   }, [open, user]);
 
@@ -154,10 +216,110 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     if (!open) {
       setViewMode('list');
       setCurrentBankId(null);
+      setCurrentCardId(null);
       setErrors({});
+      setCardErrors({});
       resetVisibility();
+      resetCardVisibility();
+      setAuthenticated(false);
+      setShowPinDialog(false);
     }
   }, [open]);
+
+  const loadPinData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const pinRef = doc(db, 'users', user.uid, 'bankDetailsPin', 'data');
+      const pinSnap = await getDoc(pinRef);
+      
+      if (pinSnap.exists()) {
+        const data = pinSnap.data();
+        setPinData({
+          pin: data.pin,
+          pinSet: data.pinSet || false,
+        });
+        
+        // PIN is set, show verify dialog
+        setPinMode('verify');
+        setShowPinDialog(true);
+      } else {
+        // First time - no PIN set
+        setPinData({ pinSet: false });
+        setPinMode('set');
+        setShowPinDialog(true);
+      }
+    } catch (error) {
+      console.error('Error loading PIN data:', error);
+      toast.error('Failed to load security settings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Simple hash function for PIN
+  const hashPin = (pin: string): string => {
+    let hash = 0;
+    for (let i = 0; i < pin.length; i++) {
+      const char = pin.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash.toString();
+  };
+
+  const handlePinSubmit = async (pin: string): Promise<boolean> => {
+    if (!user) return false;
+    
+    setPinLoading(true);
+    try {
+      if (pinMode === 'set') {
+        // Set new PIN
+        const hashedPin = hashPin(pin);
+        const pinRef = doc(db, 'users', user.uid, 'bankDetailsPin', 'data');
+        
+        await setDoc(pinRef, {
+          pin: hashedPin,
+          pinSet: true,
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+        }, { merge: true });
+        
+        setPinData({
+          pin: hashedPin,
+          pinSet: true,
+        });
+        
+        setAuthenticated(true);
+        setShowPinDialog(false);
+        loadAllBankDetails();
+        loadAllCreditCards();
+        toast.success('Bank Details PIN set successfully!');
+        return true;
+      } else {
+        // Verify PIN
+        const hashedPin = hashPin(pin);
+        
+        if (hashedPin === pinData.pin) {
+          setAuthenticated(true);
+          setShowPinDialog(false);
+          loadAllBankDetails();
+          loadAllCreditCards();
+          toast.success('Access granted!');
+          return true;
+        } else {
+          return false;
+        }
+      }
+    } catch (error) {
+      console.error('PIN error:', error);
+      toast.error('An error occurred. Please try again.');
+      return false;
+    } finally {
+      setPinLoading(false);
+    }
+  };
 
   const resetVisibility = () => {
     setVisibility({
@@ -170,6 +332,14 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
       mobileBankingPin: false,
       netBankingUserId: false,
       netBankingPassword: false,
+    });
+  };
+
+  const resetCardVisibility = () => {
+    setCardVisibility({
+      cardNumber: false,
+      cvv: false,
+      pin: false,
     });
   };
 
@@ -274,6 +444,178 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     resetVisibility();
   };
 
+  // Credit Card functions
+  const loadAllCreditCards = async () => {
+    if (!user) return;
+
+    try {
+      const cardsRef = collection(db, 'users', user.uid, 'creditCardDetails');
+      const cardsSnap = await getDocs(cardsRef);
+      
+      const cards: MaskedCreditCardDetails[] = [];
+      
+      for (const docSnap of cardsSnap.docs) {
+        const data = docSnap.data();
+        const decryptedCardNumber = decryptData(data.cardNumber || '', user.uid);
+        
+        cards.push({
+          id: docSnap.id,
+          cardName: data.cardName || '',
+          cardHolderName: data.cardHolderName || '',
+          cardNumberMasked: maskCardNumber(decryptedCardNumber),
+          expiryDate: data.expiryDate || '',
+          hasCvv: !!data.cvv,
+          hasPin: !!data.pin,
+          dueDate: data.dueDate || undefined,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        });
+      }
+      
+      // Sort by creation date (newest first)
+      cards.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      setCreditCardList(cards);
+    } catch (error) {
+      console.error('Error loading credit cards:', error);
+    }
+  };
+
+  const loadSingleCreditCard = async (cardId: string) => {
+    if (!user) return;
+
+    try {
+      const cardRef = doc(db, 'users', user.uid, 'creditCardDetails', cardId);
+      const cardSnap = await getDoc(cardRef);
+
+      if (cardSnap.exists()) {
+        const data = cardSnap.data();
+        
+        setCardFormData({
+          cardName: data.cardName || '',
+          cardHolderName: data.cardHolderName || '',
+          cardNumber: decryptData(data.cardNumber || '', user.uid),
+          expiryDate: data.expiryDate || '',
+          cvv: decryptData(data.cvv || '', user.uid),
+          pin: decryptData(data.pin || '', user.uid),
+          dueDate: data.dueDate?.toString() || '',
+        });
+      }
+    } catch (error) {
+      console.error('Error loading credit card:', error);
+      toast.error('Failed to load credit card details');
+    }
+  };
+
+  const resetCardForm = () => {
+    setCardFormData({
+      cardName: '',
+      cardHolderName: '',
+      cardNumber: '',
+      expiryDate: '',
+      cvv: '',
+      pin: '',
+      dueDate: '',
+    });
+    setCardErrors({});
+    resetCardVisibility();
+  };
+
+  const validateCardForm = (): boolean => {
+    const newErrors: CreditCardFormErrors = {};
+
+    if (!cardFormData.cardName.trim()) {
+      newErrors.cardName = 'Card name is required';
+    }
+
+    if (!cardFormData.cardHolderName.trim()) {
+      newErrors.cardHolderName = 'Card holder name is required';
+    }
+
+    if (cardFormData.cardNumber && !validateCardNumber(cardFormData.cardNumber)) {
+      newErrors.cardNumber = 'Invalid card number (16 digits)';
+    }
+
+    if (cardFormData.expiryDate && !validateExpiryDate(cardFormData.expiryDate)) {
+      newErrors.expiryDate = 'Invalid or expired date';
+    }
+
+    if (cardFormData.cvv && !validateCVV(cardFormData.cvv)) {
+      newErrors.cvv = 'CVV must be 3 digits';
+    }
+
+    if (cardFormData.pin && !validatePIN(cardFormData.pin)) {
+      newErrors.pin = 'PIN must be 4-6 digits';
+    }
+
+    setCardErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSaveCard = async () => {
+    if (!user) return;
+
+    if (!validateCardForm()) {
+      toast.error('Please fix the validation errors');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const cardId = currentCardId || crypto.randomUUID();
+      const cardRef = doc(db, 'users', user.uid, 'creditCardDetails', cardId);
+
+      const encryptedData: Record<string, any> = {
+        cardName: cardFormData.cardName.trim(),
+        cardHolderName: cardFormData.cardHolderName.trim(),
+        cardNumber: encryptData(cardFormData.cardNumber.replace(/\s/g, ''), user.uid),
+        expiryDate: cardFormData.expiryDate,
+        cvv: encryptData(cardFormData.cvv, user.uid),
+        pin: encryptData(cardFormData.pin, user.uid),
+        dueDate: cardFormData.dueDate ? parseInt(cardFormData.dueDate) : null,
+        updatedAt: serverTimestamp(),
+      };
+
+      if (!currentCardId) {
+        encryptedData.createdAt = serverTimestamp();
+      }
+
+      await setDoc(cardRef, encryptedData, { merge: true });
+
+      toast.success(currentCardId ? 'Credit card updated' : 'Credit card added');
+      await loadAllCreditCards();
+      setViewMode('list');
+      setCurrentCardId(null);
+      resetCardForm();
+    } catch (error) {
+      console.error('Error saving credit card:', error);
+      toast.error('Failed to save credit card');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteCard = async () => {
+    if (!user || !cardToDelete) return;
+
+    try {
+      const cardRef = doc(db, 'users', user.uid, 'creditCardDetails', cardToDelete);
+      await deleteDoc(cardRef);
+      
+      toast.success('Credit card deleted');
+      await loadAllCreditCards();
+      setDeleteDialogOpen(false);
+      setCardToDelete(null);
+      
+      if (currentCardId === cardToDelete) {
+        setViewMode('list');
+        setCurrentCardId(null);
+      }
+    } catch (error) {
+      console.error('Error deleting credit card:', error);
+      toast.error('Failed to delete credit card');
+    }
+  };
+
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
@@ -340,7 +682,7 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
       const bankRef = doc(db, 'users', user.uid, 'bankDetails', bankId);
 
       // Encrypt sensitive data before saving
-      const encryptedData = {
+      const encryptedData: Record<string, any> = {
         accountHolderName: formData.accountHolderName.trim(),
         bankName: formData.bankName.trim(),
         customerId: formData.customerId.trim(),
@@ -356,8 +698,12 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
         netBankingUserId: encryptData(formData.netBankingUserId, user.uid),
         netBankingPassword: encryptData(formData.netBankingPassword, user.uid),
         updatedAt: serverTimestamp(),
-        createdAt: currentBankId ? undefined : serverTimestamp(),
       };
+
+      // Only add createdAt for new entries
+      if (!currentBankId) {
+        encryptedData.createdAt = serverTimestamp();
+      }
 
       await setDoc(bankRef, encryptedData, { merge: true });
 
@@ -371,6 +717,17 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
       toast.error('Failed to save bank details');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Helper function to get ordinal suffix for day of month
+  const getOrdinalSuffix = (day: number): string => {
+    if (day >= 11 && day <= 13) return 'th';
+    switch (day % 10) {
+      case 1: return 'st';
+      case 2: return 'nd';
+      case 3: return 'rd';
+      default: return 'th';
     }
   };
 
@@ -408,20 +765,55 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     setViewMode('edit');
   };
 
+  const handleViewCard = async (cardId: string) => {
+    setCurrentCardId(cardId);
+    await loadSingleCreditCard(cardId);
+    setViewMode('view-card');
+  };
+
+  const handleEditCard = async (cardId: string) => {
+    setCurrentCardId(cardId);
+    await loadSingleCreditCard(cardId);
+    setViewMode('edit-card');
+  };
+
   const handleAddNew = () => {
-    resetForm();
-    setCurrentBankId(null);
-    setViewMode('add');
+    // Show selection dialog
+    setViewMode('select-type');
+  };
+
+  const handleSelectType = (type: DetailType) => {
+    if (type === 'bank') {
+      resetForm();
+      setCurrentBankId(null);
+      setViewMode('add');
+    } else {
+      resetCardForm();
+      setCurrentCardId(null);
+      setViewMode('add-card');
+    }
   };
 
   const handleBack = () => {
-    setViewMode('list');
-    setCurrentBankId(null);
-    resetForm();
+    if (viewMode === 'select-type') {
+      setViewMode('list');
+    } else if (viewMode === 'add-card' || viewMode === 'view-card' || viewMode === 'edit-card') {
+      setViewMode('list');
+      setCurrentCardId(null);
+      resetCardForm();
+    } else {
+      setViewMode('list');
+      setCurrentBankId(null);
+      resetForm();
+    }
   };
 
   const toggleVisibility = (field: keyof FieldVisibility) => {
     setVisibility(prev => ({ ...prev, [field]: !prev[field] }));
+  };
+
+  const toggleCardVisibility = (field: keyof CreditCardVisibility) => {
+    setCardVisibility(prev => ({ ...prev, [field]: !prev[field] }));
   };
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -437,8 +829,8 @@ export function BankDetailsDialog({ open, onOpenChange }: BankDetailsDialogProps
     }
   };
 
-  const handleShareBankDetails = async () => {
-    const shareText = `Bank Details:
+  const getBankDetailsShareText = () => {
+    return `Bank Details:
 ━━━━━━━━━━━━━━━━━━
 Bank Name: ${formData.bankName || '-'}
 Account Holder: ${formData.accountHolderName || '-'}
@@ -446,7 +838,34 @@ Account Number: ${formData.bankAccountNumber || '-'}
 IFSC Code: ${formData.ifscCode || '-'}
 Customer ID: ${formData.customerId || '-'}
 ━━━━━━━━━━━━━━━━━━`;
+  };
 
+  const handleCopyBankDetails = async () => {
+    const shareText = getBankDetailsShareText();
+    await copyToClipboard(shareText, 'Bank details');
+  };
+
+  const handleShareWhatsApp = () => {
+    const shareText = getBankDetailsShareText();
+    const encodedText = encodeURIComponent(shareText);
+    window.open(`https://wa.me/?text=${encodedText}`, '_blank');
+  };
+
+  const handleShareTelegram = () => {
+    const shareText = getBankDetailsShareText();
+    const encodedText = encodeURIComponent(shareText);
+    window.open(`https://t.me/share/url?text=${encodedText}`, '_blank');
+  };
+
+  const handleShareEmail = () => {
+    const shareText = getBankDetailsShareText();
+    const subject = encodeURIComponent('Bank Details');
+    const body = encodeURIComponent(shareText);
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+  };
+
+  const handleNativeShare = async () => {
+    const shareText = getBankDetailsShareText();
     if (navigator.share) {
       try {
         await navigator.share({
@@ -455,12 +874,10 @@ Customer ID: ${formData.customerId || '-'}
         });
       } catch (error: any) {
         if (error.name !== 'AbortError') {
-          // Fallback to clipboard
           await copyToClipboard(shareText, 'Bank details');
         }
       }
     } else {
-      // Fallback to clipboard
       await copyToClipboard(shareText, 'Bank details');
     }
   };
@@ -558,28 +975,74 @@ Customer ID: ${formData.customerId || '-'}
     );
   };
 
+  const renderSelectTypeView = () => {
+    return (
+      <div className="space-y-6 py-4">
+        <p className="text-center text-muted-foreground">
+          What would you like to add?
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Card 
+            className="cursor-pointer hover:bg-accent/50 transition-colors border-2 hover:border-primary"
+            onClick={() => handleSelectType('bank')}
+          >
+            <CardContent className="p-6 flex flex-col items-center text-center gap-3">
+              <div className="h-14 w-14 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                <Building2 className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="font-semibold">Bank Account</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add bank details, debit card & net banking info
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card 
+            className="cursor-pointer hover:bg-accent/50 transition-colors border-2 hover:border-primary"
+            onClick={() => handleSelectType('card')}
+          >
+            <CardContent className="p-6 flex flex-col items-center text-center gap-3">
+              <div className="h-14 w-14 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                <CreditCard className="h-7 w-7 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="font-semibold">Credit Card</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Store credit card details securely
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  };
+
   const renderListView = () => {
-    if (bankDetailsList.length === 0) {
+    const totalItems = bankDetailsList.length + creditCardList.length;
+    
+    if (totalItems === 0) {
       return (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Building2 className="h-16 w-16 text-muted-foreground/30 mb-4" />
           <h3 className="font-medium text-lg mb-2">No Bank Details Yet</h3>
           <p className="text-sm text-muted-foreground mb-6 max-w-xs">
-            Add your bank account, card, and net banking information securely.
+            Add your bank account, credit card, and net banking information securely.
           </p>
           <Button onClick={handleAddNew} className="gap-2">
             <Plus className="h-4 w-4" />
-            Add Bank Details
+            Add New
           </Button>
         </div>
       );
     }
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {bankDetailsList.length} bank account{bankDetailsList.length !== 1 ? 's' : ''} saved
+            {totalItems} item{totalItems !== 1 ? 's' : ''} saved
           </p>
           <Button onClick={handleAddNew} size="sm" className="gap-2">
             <Plus className="h-4 w-4" />
@@ -587,39 +1050,95 @@ Customer ID: ${formData.customerId || '-'}
           </Button>
         </div>
 
-        <div className="space-y-3">
-          {bankDetailsList.map((bank) => (
-            <Card 
-              key={bank.id} 
-              className="cursor-pointer hover:bg-accent/50 transition-colors"
-              onClick={() => handleViewBank(bank.id)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Building2 className="h-5 w-5 text-primary" />
+        {/* Bank Accounts Section */}
+        {bankDetailsList.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <p className="text-sm font-medium">Bank Accounts ({bankDetailsList.length})</p>
+            </div>
+            {bankDetailsList.map((bank) => (
+              <Card 
+                key={bank.id} 
+                className="cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => handleViewBank(bank.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                        <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{bank.bankName || bank.accountHolderName || 'Unnamed Account'}</p>
+                        <p className="text-sm text-muted-foreground font-mono">
+                          {bank.bankAccountNumberMasked}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{bank.bankName || bank.accountHolderName || 'Unnamed Account'}</p>
-                      <p className="text-sm text-muted-foreground font-mono">
-                        {bank.bankAccountNumberMasked}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      {bank.ifscCode && (
+                        <Badge variant="secondary" className="hidden sm:flex">
+                          {bank.ifscCode}
+                        </Badge>
+                      )}
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {bank.ifscCode && (
-                      <Badge variant="secondary" className="hidden sm:flex">
-                        {bank.ifscCode}
-                      </Badge>
-                    )}
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* Credit Cards Section */}
+        {creditCardList.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-purple-600" />
+              <p className="text-sm font-medium">Credit Cards ({creditCardList.length})</p>
+            </div>
+            {creditCardList.map((card) => (
+              <Card 
+                key={card.id} 
+                className="cursor-pointer hover:bg-accent/50 transition-colors"
+                onClick={() => handleViewCard(card.id)}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-950 flex items-center justify-center">
+                        <CreditCard className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{card.cardName || 'Unnamed Card'}</p>
+                        <p className="text-sm text-muted-foreground font-mono">
+                          {card.cardNumberMasked}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-2">
+                        {card.expiryDate && (
+                          <Badge variant="secondary" className="hidden sm:flex">
+                            Exp: {card.expiryDate}
+                          </Badge>
+                        )}
+                        <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      {card.dueDate && (
+                        <Badge variant="outline" className="text-xs flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Due: {card.dueDate}{getOrdinalSuffix(card.dueDate)}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -682,15 +1201,48 @@ Customer ID: ${formData.customerId || '-'}
                 <Building2 className="h-4 w-4 text-primary" />
                 Bank Information
               </CardTitle>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={handleShareBankDetails}
-              >
-                <Share2 className="h-4 w-4" />
-                Share
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={handleCopyBankDetails}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      Share
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={handleShareWhatsApp} className="gap-2 cursor-pointer">
+                      <MessageCircle className="h-4 w-4 text-green-600" />
+                      WhatsApp
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareTelegram} className="gap-2 cursor-pointer">
+                      <Send className="h-4 w-4 text-blue-500" />
+                      Telegram
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleShareEmail} className="gap-2 cursor-pointer">
+                      <Mail className="h-4 w-4 text-red-500" />
+                      Email
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleNativeShare} className="gap-2 cursor-pointer">
+                      <Share2 className="h-4 w-4" />
+                      More Options...
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -891,6 +1443,374 @@ Customer ID: ${formData.customerId || '-'}
     );
   };
 
+  const renderCreditCardViewMode = () => {
+    const card = creditCardList.find(c => c.id === currentCardId);
+    if (!card) return null;
+
+    return (
+      <div className="space-y-6">
+        {/* Card Information */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CreditCard className="h-4 w-4 text-purple-600" />
+                Credit Card Details
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Card Name</p>
+                <p className="font-medium">{card.cardName || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Card Holder</p>
+                <p className="font-medium">{card.cardHolderName || '-'}</p>
+              </div>
+            </div>
+            
+            <div>
+              <p className="text-xs text-muted-foreground">Card Number</p>
+              <div className="flex items-center gap-2">
+                <p className="font-medium font-mono flex-1">
+                  {cardVisibility.cardNumber ? cardFormData.cardNumber : card.cardNumberMasked}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => toggleCardVisibility('cardNumber')}
+                >
+                  {cardVisibility.cardNumber ? (
+                    <EyeOff className="h-3 w-3" />
+                  ) : (
+                    <Eye className="h-3 w-3" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => copyToClipboard(cardFormData.cardNumber, 'Card number')}
+                  disabled={!cardFormData.cardNumber}
+                >
+                  <Copy className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">Expiry Date</p>
+                <p className="font-medium">{card.expiryDate || '-'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Bill Due Date</p>
+                <div className="flex items-center gap-1">
+                  {card.dueDate ? (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {card.dueDate}{getOrdinalSuffix(card.dueDate)} of every month
+                    </Badge>
+                  ) : (
+                    <p className="font-medium">-</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <p className="text-xs text-muted-foreground">CVV</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium font-mono flex-1">
+                    {card.hasCvv ? (cardVisibility.cvv ? cardFormData.cvv : '***') : '-'}
+                  </p>
+                  {card.hasCvv && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => toggleCardVisibility('cvv')}
+                      >
+                        {cardVisibility.cvv ? (
+                          <EyeOff className="h-3 w-3" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => copyToClipboard(cardFormData.cvv, 'CVV')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">PIN</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium font-mono flex-1">
+                    {card.hasPin ? (cardVisibility.pin ? cardFormData.pin : '****') : '-'}
+                  </p>
+                  {card.hasPin && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => toggleCardVisibility('pin')}
+                      >
+                        {cardVisibility.pin ? (
+                          <EyeOff className="h-3 w-3" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => copyToClipboard(cardFormData.pin, 'PIN')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Security Note */}
+        <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+          <Shield className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-primary">Security Note</p>
+            <p className="text-muted-foreground mt-1">
+              All card details are encrypted. Use the eye icon to reveal sensitive information.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setCardToDelete(currentCardId);
+              setDeleteDialogOpen(true);
+            }}
+            className="gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
+          <Button 
+            onClick={() => handleEditCard(currentCardId!)} 
+            className="flex-1 gap-2"
+          >
+            <Edit2 className="h-4 w-4" />
+            Edit Details
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCreditCardEditMode = () => {
+    const handleCardInputChange = (field: keyof typeof cardFormData, value: string) => {
+      let processedValue = value;
+
+      if (field === 'cardNumber') {
+        processedValue = formatCardNumber(value);
+      } else if (field === 'expiryDate') {
+        processedValue = formatExpiryDate(value);
+      }
+
+      setCardFormData(prev => ({ ...prev, [field]: processedValue }));
+
+      if (cardErrors[field]) {
+        setCardErrors(prev => ({ ...prev, [field]: undefined }));
+      }
+    };
+
+    const renderCardInput = (
+      field: keyof typeof cardFormData,
+      label: string,
+      placeholder: string,
+      isSecret: boolean = false,
+      maxLength?: number,
+      inputMode?: 'text' | 'numeric'
+    ) => {
+      const isVisible = isSecret ? cardVisibility[field as keyof CreditCardVisibility] : true;
+      const error = cardErrors[field];
+      const hasValue = cardFormData[field].trim().length > 0;
+
+      return (
+        <div className="space-y-2">
+          <Label htmlFor={`card-${field}`} className="flex items-center gap-2">
+            {label}
+            {isSecret && <Lock className="h-3 w-3 text-muted-foreground" />}
+          </Label>
+          <div className="relative flex items-center gap-1">
+            <div className="relative flex-1">
+              <Input
+                id={`card-${field}`}
+                type={isSecret && !isVisible ? 'password' : 'text'}
+                value={cardFormData[field]}
+                onChange={(e) => handleCardInputChange(field, e.target.value)}
+                placeholder={placeholder}
+                maxLength={maxLength}
+                inputMode={inputMode}
+                className={cn(
+                  isSecret && 'pr-10',
+                  error && 'border-destructive focus-visible:ring-destructive'
+                )}
+              />
+              {isSecret && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => toggleCardVisibility(field as keyof CreditCardVisibility)}
+                >
+                  {isVisible ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => copyToClipboard(cardFormData[field], label)}
+              disabled={!hasValue}
+              title={`Copy ${label}`}
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+          {error && (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              {error}
+            </p>
+          )}
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Card Details */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-purple-600" />
+              Credit Card Details
+            </CardTitle>
+            <CardDescription>Enter your credit card information securely</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {renderCardInput('cardName', 'Card Name', 'e.g., HDFC Millennia, ICICI Amazon Pay')}
+            {renderCardInput('cardHolderName', 'Card Holder Name', 'Enter name as on card')}
+            {renderCardInput('cardNumber', 'Card Number', '0000 0000 0000 0000', true, 19, 'numeric')}
+            <div className="grid grid-cols-2 gap-4">
+              {renderCardInput('expiryDate', 'Expiry Date (MM/YY)', 'MM/YY', true, 5)}
+              {renderCardInput('cvv', 'CVV', '***', true, 3, 'numeric')}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {renderCardInput('pin', 'Card PIN', '****', true, 6, 'numeric')}
+              <div className="space-y-2">
+                <Label htmlFor="dueDate" className="flex items-center gap-2">
+                  Bill Due Date
+                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="dueDate"
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={cardFormData.dueDate}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const num = parseInt(value);
+                      if (value === '' || (num >= 1 && num <= 31)) {
+                        setCardFormData(prev => ({ ...prev, dueDate: value }));
+                      }
+                    }}
+                    placeholder="1-31"
+                    inputMode="numeric"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Day of month when bill is due
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Security Note */}
+        <div className="flex items-start gap-3 p-3 bg-primary/5 rounded-lg border border-primary/20">
+          <Shield className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium text-primary">Security Note</p>
+            <ul className="text-muted-foreground mt-1 space-y-1">
+              <li className="flex items-center gap-2">
+                <Lock className="h-3 w-3" />
+                All data is encrypted before storage
+              </li>
+              <li className="flex items-center gap-2">
+                <EyeOff className="h-3 w-3" />
+                Sensitive data is hidden by default
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3 pb-4">
+          <Button
+            variant="outline"
+            onClick={handleBack}
+            className="flex-1 gap-2"
+            disabled={saving}
+          >
+            <X className="h-4 w-4" />
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveCard}
+            className="flex-1 gap-2"
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {saving ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      </div>
+    );
+  };
+
   const renderEditMode = () => {
     return (
       <div className="space-y-6">
@@ -1020,6 +1940,14 @@ Customer ID: ${formData.customerId || '-'}
         return 'Edit Bank Details';
       case 'view':
         return 'Bank Details';
+      case 'select-type':
+        return 'Add New';
+      case 'add-card':
+        return 'Add Credit Card';
+      case 'edit-card':
+        return 'Edit Credit Card';
+      case 'view-card':
+        return 'Credit Card Details';
       default:
         return 'Bank Details';
     }
@@ -1033,9 +1961,24 @@ Customer ID: ${formData.customerId || '-'}
         return 'Update your bank information';
       case 'view':
         return 'View your saved bank information';
+      case 'select-type':
+        return 'Choose what you want to add';
+      case 'add-card':
+        return 'Enter your credit card information securely';
+      case 'edit-card':
+        return 'Update your credit card information';
+      case 'view-card':
+        return 'View your saved credit card information';
       default:
         return 'Manage your bank accounts and cards';
     }
+  };
+
+  const getDialogIcon = () => {
+    if (viewMode === 'add-card' || viewMode === 'edit-card' || viewMode === 'view-card') {
+      return <CreditCard className="h-5 w-5 text-purple-600" />;
+    }
+    return <Building2 className="h-5 w-5 text-primary" />;
   };
 
   return (
@@ -1044,7 +1987,7 @@ Customer ID: ${formData.customerId || '-'}
         <DialogContent className="sm:max-w-lg max-h-[90vh] h-[90vh] flex flex-col p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4 shrink-0 border-b">
             <div className="flex items-center gap-2">
-              {viewMode !== 'list' && (
+              {authenticated && viewMode !== 'list' && (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -1056,11 +1999,11 @@ Customer ID: ${formData.customerId || '-'}
               )}
               <div>
                 <DialogTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5 text-primary" />
-                  {getDialogTitle()}
+                  {authenticated ? getDialogIcon() : <ShieldCheck className="h-5 w-5 text-primary" />}
+                  {authenticated ? getDialogTitle() : 'Bank Details'}
                 </DialogTitle>
                 <DialogDescription>
-                  {getDialogDescription()}
+                  {authenticated ? getDialogDescription() : 'Secure access to your bank details'}
                 </DialogDescription>
               </div>
             </div>
@@ -1071,10 +2014,35 @@ Customer ID: ${formData.customerId || '-'}
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
+            ) : !authenticated ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+                  <Lock className="h-10 w-10 text-primary" />
+                </div>
+                <h3 className="font-medium text-lg mb-2">PIN Protected</h3>
+                <p className="text-sm text-muted-foreground mb-6 max-w-xs">
+                  {pinData.pinSet 
+                    ? 'Enter your PIN to access bank details. This keeps your sensitive information secure.'
+                    : 'Set up a 4-digit PIN to secure your bank details. You\'ll need this PIN every time you want to view them.'}
+                </p>
+                <Button 
+                  onClick={() => setShowPinDialog(true)}
+                  className="gap-2"
+                >
+                  <Lock className="h-4 w-4" />
+                  {pinData.pinSet ? 'Enter PIN' : 'Set Up PIN'}
+                </Button>
+              </div>
             ) : viewMode === 'list' ? (
               renderListView()
+            ) : viewMode === 'select-type' ? (
+              renderSelectTypeView()
             ) : viewMode === 'view' ? (
               renderViewModeContent()
+            ) : viewMode === 'view-card' ? (
+              renderCreditCardViewMode()
+            ) : viewMode === 'add-card' || viewMode === 'edit-card' ? (
+              renderCreditCardEditMode()
             ) : (
               renderEditMode()
             )}
@@ -1082,21 +2050,36 @@ Customer ID: ${formData.customerId || '-'}
         </DialogContent>
       </Dialog>
 
+      {/* PIN Dialog */}
+      <PinDialog
+        open={showPinDialog}
+        onOpenChange={setShowPinDialog}
+        mode={pinMode}
+        onPinSubmit={handlePinSubmit}
+        loading={pinLoading}
+        context="bankDetails"
+      />
+
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Bank Details?</AlertDialogTitle>
+            <AlertDialogTitle>
+              {cardToDelete ? 'Delete Credit Card?' : 'Delete Bank Details?'}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the bank account details from your profile.
+              This action cannot be undone. This will permanently delete the {cardToDelete ? 'credit card' : 'bank account'} details from your profile.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setBankToDelete(null)}>
+            <AlertDialogCancel onClick={() => {
+              setBankToDelete(null);
+              setCardToDelete(null);
+            }}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDelete}
+              onClick={cardToDelete ? handleDeleteCard : handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete

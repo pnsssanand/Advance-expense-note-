@@ -25,6 +25,7 @@ export interface CreditCard {
   id: string;
   name: string;
   dueAmount: number;
+  dueDate?: number; // Day of month (1-31) for bill due date
   lastUpdated: Date;
 }
 
@@ -141,6 +142,34 @@ export interface MaskedBankDetails {
   hasMobileBankingPin: boolean;
   hasNetBankingUserId: boolean;
   hasNetBankingPassword: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Credit Card Details (Secure Storage for Profile)
+export interface CreditCardDetails {
+  id: string;
+  cardName: string; // e.g., "HDFC Millennia"
+  cardHolderName: string;
+  cardNumber: string; // Encrypted
+  expiryDate: string; // MM/YY format
+  cvv: string; // Encrypted
+  pin: string; // Encrypted
+  dueDate?: number; // Day of month (1-31) for bill due date
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Masked version for credit card display
+export interface MaskedCreditCardDetails {
+  id: string;
+  cardName: string;
+  cardHolderName: string;
+  cardNumberMasked: string; // e.g., **** **** **** 5678
+  expiryDate: string;
+  hasCvv: boolean;
+  hasPin: boolean;
+  dueDate?: number; // Day of month (1-31) for bill due date
   createdAt: Date;
   updatedAt: Date;
 }
